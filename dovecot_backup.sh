@@ -163,8 +163,10 @@ COMPRESSION='gz'
 # CUSTOM - Backup-Files.
 TMP_FOLDER='/srv/backup'
 DIR_BACKUP='/srv/backup'
-FILE_BACKUP=dovecot_backup_`date '+%Y%m%d_%H%M%S'`.tar.$COMPRESSION
-FILE_DELETE=$(printf '*.tar.%s' $COMPRESSION)
+FILE_BACKUPtar=dovecot_backup_`date '+%Y%m%d_%H%M%S'`.tar
+FILE_BACKUP=dovecot_backup_`date '+%Y%m%d_%H%M%S'`.tar.7z
+source ./FILE_PASSWORD
+FILE_DELETE='*.tar.7z'
 BACKUPFILES_DELETE=14
 
 # CUSTOM - dovecot Folders.
@@ -189,6 +191,9 @@ MAIL_RECIPIENT='you@example.com'
 
 # CUSTOM - Status-Mail [Y|N].
 MAIL_STATUS='N'
+
+#Nextcloud Upload
+Nextcloud=true
 
 ##############################################################################
 # >>> Normaly there is no need to change anything below this comment line. ! #
@@ -607,7 +612,9 @@ for users in "${VAR_LISTED_USER[@]}"; do
 		cd $DIR_TEMP
 
 		log "Packaging to archive for user: $users ..."
-		$TAR_COMMAND -acvf $users-$FILE_BACKUP $USERPART --atime-preserve --preserve-permissions
+		$TAR_COMMAND -cvzf $users-$FILE_BACKUPtar $USERPART --atime-preserve --preserve-permissions
+      
+      7z a -sdel -p$FILE_PASSWORD $users-$FILE_BACKUP $users-$FILE_BACKUPtar
 
 		log "Delete mailbox files for user: $users ..."
 		$RM_COMMAND "$DIR_TEMP/$DOMAINPART" -rf
@@ -639,6 +646,11 @@ for users in "${VAR_LISTED_USER[@]}"; do
 	log "Ended backup process for user: $users ..."
 	log ""
 done
+
+if ["$nextcloud"]; then
+   #Upload to Nextcloud
+   bash /opt/shareLinkCreator/shareLinkCreator $DIR_BACKUP/$users-$FILE_BACKUP
+fi
 
 # Delete the temporary folder DIR_TEMP.
 $RM_COMMAND $DIR_TEMP -rf
