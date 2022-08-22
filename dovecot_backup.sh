@@ -165,7 +165,7 @@ TMP_FOLDER='/srv/backup'
 DIR_BACKUP='/srv/backup'
 FILE_BACKUPtar=dovecot_backup_`date '+%Y%m%d_%H%M%S'`.tar
 FILE_BACKUP=dovecot_backup_`date '+%Y%m%d_%H%M%S'`.tar.7z
-source ./FILE_PASSWORD
+source /srv/backup/FILE_PASSWORD
 FILE_DELETE='*.tar.7z'
 BACKUPFILES_DELETE=14
 
@@ -647,10 +647,9 @@ for users in "${VAR_LISTED_USER[@]}"; do
 	log ""
 done
 
-if ["$nextcloud"]; then
-   #Upload to Nextcloud
-   bash /opt/shareLinkCreator/shareLinkCreator $DIR_BACKUP/$users-$FILE_BACKUP
-fi
+#Upload to Nextcloud
+bash /opt/shareLinkCreator/shareLinkCreator $DIR_BACKUP/$users-$FILE_BACKUP
+
 
 # Delete the temporary folder DIR_TEMP.
 $RM_COMMAND $DIR_TEMP -rf
