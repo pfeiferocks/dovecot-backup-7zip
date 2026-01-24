@@ -330,7 +330,7 @@ function headerblock () {
 	TEXT_INPUT="$1"
 	LINE_COUNT=78
  
-    # {% raw %} Help variables.
+    # Help variables.
     WORD_COUNT=${#TEXT_INPUT}
     CHAR_AFTER=$(( LINE_COUNT - WORD_COUNT - 4 ))
     LINE_SPACE=$(( LINE_COUNT - 2 ))
