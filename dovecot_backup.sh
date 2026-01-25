@@ -7,7 +7,7 @@
 #               On error while execution, a LOG file and a error message     #
 #               will be send by e-mail.                                      #
 #                                                                            #
-# Last update : 23.01.2026                                                   #
+# Last update : 25.01.2026                                                   #
 # Version     : 1.23                                                         #
 #                                                                            #
 # Author      : Klaus Tachtler, <klaus@tachtler.net>                         #
@@ -166,7 +166,7 @@
 #               Version for Dovecot 2.4.                                     #
 # -------------------------------------------------------------------------- #
 # Version     : 1.23                                                         #
-# Description : Optimize code with ShellCheck.                               #
+# Description : Optimize code with ShellCheck and AI.                        #
 # -------------------------------------------------------------------------- #
 # Version     : x.xx                                                         #
 # Description : <Description>                                                #
@@ -205,7 +205,7 @@ FILE_USERLIST=''
  
 # CUSTOM - Check when FILE_USERLIST was used, if the user per line was a
 #          valid e-mail address [Y|N].
-FILE_USERLIST_VALIDATE_EMAIL='N'
+FILE_USERLIST_VALIDATE_EMAIL='Y'
  
 # CUSTOM - Mail-Recipient.
 MAIL_RECIPIENT='you@example.com'
@@ -216,38 +216,51 @@ MAIL_STATUS='N'
 ##############################################################################
 # >>> Normaly there is no need to change anything below this comment line. ! #
 ##############################################################################
- 
+
+# Script control.
+set -o nounset
+set -o pipefail
+IFS=$'\n\t'
+
 # Variables.
-TAR_COMMAND=$(command -v tar)
-GZIP_COMMAND=$(command -v gzip)
-ZSTD_COMMAND=$(command -v zstd)
-TOUCH_COMMAND=$(command -v touch)
-RM_COMMAND=$(command -v rm)
-PROG_SENDMAIL=$(command -v sendmail)
 CAT_COMMAND=$(command -v cat)
-DATE_COMMAND=$(command -v date)
-MKDIR_COMMAND=$(command -v mkdir)
-CHOWN_COMMAND=$(command -v chown)
 CHMOD_COMMAND=$(command -v chmod)
-MKTEMP_COMMAND=$(command -v mktemp)
+CHOWN_COMMAND=$(command -v chown)
+CUT_COMMAND=$(command -v cut)
+DATE_COMMAND=$(command -v date)
+FIND_COMMAND=$(command -v find)
 GREP_COMMAND=$(command -v grep)
+GZIP_COMMAND=$(command -v gzip)
+MKDIR_COMMAND=$(command -v mkdir)
+MKTEMP_COMMAND=$(command -v mktemp)
 MV_COMMAND=$(command which mv)
+PROG_SENDMAIL=$(command -v sendmail)
+RM_COMMAND=$(command -v rm)
 STAT_COMMAND=$(command -v stat)
+TAR_COMMAND=$(command -v tar)
+TOUCH_COMMAND=$(command -v touch)
+ZSTD_COMMAND=$(command -v zstd)
+FILE_LAST_LOG='/tmp/'$SCRIPT_NAME'.log'
 FILE_LOCK='/tmp/'$SCRIPT_NAME'.lock'
 FILE_LOG='/var/log/'$SCRIPT_NAME'.log'
-FILE_LAST_LOG='/tmp/'$SCRIPT_NAME'.log'
 FILE_MAIL='/tmp/'$SCRIPT_NAME'.mail'
-VAR_OS=$(uname -s)
-VAR_HOSTNAME=$(uname -n)
-VAR_SENDER='root@'$VAR_HOSTNAME
-VAR_EMAILDATE=$($DATE_COMMAND '+%a, %d %b %Y %H:%M:%S (%z)')
-declare -a VAR_LISTED_USER=()
-declare -a VAR_FAILED_USER=()
-VAR_COUNT_USER=0
 VAR_COUNT_FAIL=0
+VAR_COUNT_USER=0
+VAR_HOSTNAME=$(uname -n)
+VAR_OS=$(uname -s)
+VAR_EMAILDATE=$($DATE_COMMAND '+%a, %d %b %Y %H:%M:%S (%z)')
+VAR_SENDER='root@'$VAR_HOSTNAME
+declare -a VAR_FAILED_USER=()
+declare -a VAR_LISTED_USER=()
+
+# Detect, if OS is FreeBSD or OpenBSD.
+VAR_IS_BSD=false
+case "${VAR_OS,,}" in
+	freebsd|openbsd) VAR_IS_BSD=true ;;
+esac
  
-# FreeBSD and OpenBSD specific commands
-if [ "${VAR_OS,,}" = "freebsd" ] || [ "${VAR_OS,,}" = "openbsd" ] ; then
+# FreeBSD and OpenBSD specific commands.
+if $VAR_IS_BSD; then
     DSYNC_COMMAND=$(command -v doveadm)
     STAT_COMMAND_PARAM_FORMAT='-f'
     STAT_COMMAND_ARG_FORMAT_USER='%Su'
@@ -268,8 +281,15 @@ else
 fi
  
 # Functions.
+function cleanup() {
+	$RM_COMMAND -f "$FILE_LOCK"
+}
+
+# React on SIGNALS and use function cleanup.
+trap cleanup EXIT INT TERM
+
 function log() {
-	echo "$1"
+	printf '%s\n' "$1"
 	echo "$($DATE_COMMAND '+%Y/%m/%d %H:%M:%S')" "INFO:" "$1" >>"${FILE_LAST_LOG}"
 }
  
@@ -287,7 +307,7 @@ function retval() {
 function movelog() {
 	$CAT_COMMAND "$FILE_LAST_LOG" >> "$FILE_LOG"
 	$RM_COMMAND -f "$FILE_LAST_LOG"	
-	$RM_COMMAND -f "$FILE_LOCK"
+	cleanup
 }
  
 function sendmail() {
@@ -318,7 +338,7 @@ $RM_COMMAND -f "$FILE_MAIL"
  
 function error () {
 	# Parameters.
-	CODE_ERROR="$1"
+	local CODE_ERROR="$1"
  
     sendmail ERROR
 	movelog
@@ -327,13 +347,13 @@ function error () {
  
 function headerblock () {
 	# Parameters.
-	TEXT_INPUT="$1"
-	LINE_COUNT=78
+	local TEXT_INPUT="$1"
+	local LINE_COUNT=78
  
     # Help variables.
-    WORD_COUNT=${#TEXT_INPUT}
-    CHAR_AFTER=$(( LINE_COUNT - WORD_COUNT - 4 ))
-    LINE_SPACE=$(( LINE_COUNT - 2 ))
+    local WORD_COUNT=${#TEXT_INPUT}
+    local CHAR_AFTER=$(( LINE_COUNT - WORD_COUNT - 4 ))
+    local LINE_SPACE=$(( LINE_COUNT - 2 ))
  
 	# Format placeholder.
 	if [ "$CHAR_AFTER" -lt "0" ]; then
@@ -350,13 +370,13 @@ function headerblock () {
  
 function logline () {
 	# Parameters.
-	TEXT_INPUT="$1"
-	TRUE_FALSE="$2"
-	LINE_COUNT=78
+	local TEXT_INPUT="$1"
+	local TRUE_FALSE="$2"
+	local LINE_COUNT=78
  
     # Help variables.
-    WORD_COUNT=${#TEXT_INPUT}
-    CHAR_AFTER=$(( LINE_COUNT - WORD_COUNT - 8 ))
+    local WORD_COUNT=${#TEXT_INPUT}
+    local CHAR_AFTER=$(( LINE_COUNT - WORD_COUNT - 8 ))
  
 	# Format placeholder.
 	if [ "$CHAR_AFTER" -lt "0" ]; then
@@ -374,7 +394,7 @@ function logline () {
  
 function checkcommand () {
 	# Parameters.
-    CHECK_COMMAND="$1"
+    local CHECK_COMMAND="$1"
  
 	if [ ! -s "$1" ]; then
 		logline "Check if command '$CHECK_COMMAND' was found " false
@@ -415,26 +435,28 @@ if [[ $COMPRESSION != 'zst' && $COMPRESSION != 'gz' ]]; then
 fi
  
 # Check if command (file) NOT exist OR IS empty.
-checkcommand "$DSYNC_COMMAND"
-checkcommand "$TAR_COMMAND"
-checkcommand "$TOUCH_COMMAND"
-checkcommand "$RM_COMMAND"
 checkcommand "$CAT_COMMAND"
-checkcommand "$DATE_COMMAND"
-checkcommand "$MKDIR_COMMAND"
-checkcommand "$CHOWN_COMMAND"
 checkcommand "$CHMOD_COMMAND"
+checkcommand "$CHOWN_COMMAND"
+checkcommand "$CUT_COMMAND"
+checkcommand "$DATE_COMMAND"
+checkcommand "$DSYNC_COMMAND"
+checkcommand "$FIND_COMMAND"
 checkcommand "$GREP_COMMAND"
+checkcommand "$MKDIR_COMMAND"
 checkcommand "$MKTEMP_COMMAND"
 checkcommand "$MV_COMMAND"
-checkcommand "$STAT_COMMAND"
 checkcommand "$PROG_SENDMAIL"
+checkcommand "$RM_COMMAND"
+checkcommand "$STAT_COMMAND"
+checkcommand "$TAR_COMMAND"
+checkcommand "$TOUCH_COMMAND"
  
-if [ $COMPRESSION = 'gz' ]; then
+if [[ $COMPRESSION = 'gz' ]]; then
     checkcommand "$GZIP_COMMAND"
 fi
  
-if [ $COMPRESSION = 'zst' ]; then
+if [[ $COMPRESSION = 'zst' ]]; then
     checkcommand "$ZSTD_COMMAND"
 fi
  
@@ -567,7 +589,7 @@ else
 		# Check for valid e-mail address.
 		if [ $FILE_USERLIST_VALIDATE_EMAIL = 'Y' ]; then
 			# Check if basic email address syntax is valid.
-			if echo "${line}" | $GREP_COMMAND '^[a-zA-Z0-9.-]*@[a-zA-Z0-9.-]*\.[a-zA-Z0-9]*$' >/dev/null; then
+			if echo "${line}" | "$GREP_COMMAND" -Eq '^[a-zA-Z0-9.-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' >/dev/null; then
 				VAR_LISTED_USER+=("$line");
 			else
         		log ""
@@ -622,7 +644,7 @@ for users in "${VAR_LISTED_USER[@]}"; do
  
 	log "Extract mailbox data for user: $users ..."
  
-    if [ "${VAR_OS,,}" = "freebsd" ] || [ "${VAR_OS,,}" = "openbsd" ] ; then
+    if $VAR_IS_BSD; then
 	    $DSYNC_COMMAND backup -u "$users" $MAILDIR_TYPE:"$LOCATION"
 	else
 		$DSYNC_COMMAND backup -f -u "$users" $MAILDIR_TYPE:"$LOCATION"
@@ -646,10 +668,10 @@ for users in "${VAR_LISTED_USER[@]}"; do
 	else
         log "Synchronization done for user: $users ..."
  
-		cd "$DIR_TEMP" || exit
+		cd "$DIR_TEMP" || { logline "Change Directory to $DIR_TEMP " false; error 42; }
  
 		log "Packaging to archive for user: $users ..."
-		if [ "${VAR_OS,,}" = "freebsd" ] || [ "${VAR_OS,,}" = "openbsd" ] ; then
+		if $VAR_IS_BSD; then
 			$TAR_COMMAND -cvzf "$users"-"$FILE_BACKUP" "$USERPART"
 		else
 			$TAR_COMMAND -cvzf "$users"-"$FILE_BACKUP" "$USERPART" --atime-preserve --preserve-permissions
@@ -671,7 +693,7 @@ for users in "${VAR_LISTED_USER[@]}"; do
  
 		log "Delete archive files for user: $users ..."
 		if find "$DIR_BACKUP" -maxdepth 1 -type f -name "$users-$FILE_DELETE" -printf '%T@ %p\0' \
-			| sort -zn | head -z -n -"$BACKUPFILES_DELETE" | cut -z -d' ' -f2- | xargs -0 rm -f --; then
+			| sort -zn | head -z -n -"$BACKUPFILES_DELETE" | "$CUT_COMMAND" -z -d' ' -f2- | xargs -0 "$RM_COMMAND" -f --; then
         	logline "Delete old archive files from: $DIR_BACKUP " true
 		else
         	logline "Delete old archive files from: $DIR_BACKUP " false
@@ -688,7 +710,7 @@ if $RM_COMMAND -rf "$DIR_TEMP"; then
 	log ""
 else
 	logline "Delete temporary '$DIR_TEMP' folder " false
-	error 42
+	error 43
 fi
  
 # Set ownership to backup directory, again.
@@ -696,7 +718,7 @@ if $CHOWN_COMMAND -R $MAILDIR_USER:$MAILDIR_GROUP "$DIR_BACKUP"; then
     logline "Set ownership of DIR_BACKUP to $MAILDIR_USER:$MAILDIR_GROUP " true
 else
     logline "Set ownership of DIR_BACKUP to $MAILDIR_USER:$MAILDIR_GROUP " false
-	error 43
+	error 44
 fi
  
 # Set rights permission to backup directory.
@@ -704,7 +726,7 @@ if $CHMOD_COMMAND 700 "$DIR_BACKUP"; then
     logline "Set permission of DIR_BACKUP to drwx------ " true
 else
     logline "Set permission of DIR_BACKUP to drwx------ " false
-	error 44
+	error 45
 fi
  
 # Set rights permissions to backup files.
@@ -713,7 +735,7 @@ if $CHMOD_COMMAND -R 600 "$DIR_BACKUP"/*; then
 	log ""
 else
     logline "Set file permissions in DIR_BACKUP to -rw------- " false
-	error 45
+	error 46
 fi
 
 # Delete LOCK file.
@@ -721,7 +743,7 @@ rc=$?
 if [ "$rc" != "0" ]; then
     retval $rc
     log ""
-    $RM_COMMAND -f "$FILE_LOCK"
+    cleanup
 	error 99
 else
 	headerblock "End backup $SCRIPT_NAME "
@@ -744,7 +766,7 @@ fi
  
 log ""
 END_TIMESTAMP=$($DATE_COMMAND '+%s')
-if [ "${VAR_OS,,}" = "freebsd" ] || [ "${VAR_OS,,}" = "openbsd" ] ; then
+if $VAR_IS_BSD; then
     DELTA=$((END_TIMESTAMP-RUN_TIMESTAMP))
     log "$(printf 'Runtime: %02d:%02d:%02d time elapsed.\n' $((DELTA/3600)) $((DELTA%3600/60)) $((DELTA%60)))"
 else
