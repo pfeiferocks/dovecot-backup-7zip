@@ -8,7 +8,7 @@
 #               will be send by e-mail.                                      #
 #                                                                            #
 # Last update : 25.01.2026                                                   #
-# Version     : 1.23                                                         #
+# Version     : 1.23.c                                                         #
 #                                                                            #
 # Author      : Klaus Tachtler, <klaus@tachtler.net>                         #
 # DokuWiki    : http://www.dokuwiki.tachtler.net                             #
@@ -181,12 +181,14 @@
 SCRIPT_NAME='dovecot_backup'
  
 # CUSTOM - Backup-Files compression method - (possible values: gz zst).
-COMPRESSION='gz'
+COMPRESSION='7z'
  
 # CUSTOM - Backup-Files.
 TMP_FOLDER='/srv/backup'
 DIR_BACKUP='/srv/backup'
-FILE_BACKUP=dovecot_backup_$(date '+%Y%m%d_%H%M%S').tar.$COMPRESSION
+FILE_BACKUP=dovecot_backup_$(date '+%Y%m%d_%H%M%S').tar
+FILE_BACKUP7Z=dovecot_backup_$(date '+%Y%m%d_%H%M%S').tar.7z
+source /srv/backup/PASSWORD
 FILE_DELETE=$(printf '*.tar.%s' $COMPRESSION)
 BACKUPFILES_DELETE=14
  
@@ -195,6 +197,7 @@ MAILDIR_TYPE='maildir'
 MAILDIR_NAME='Maildir'
 MAILDIR_USER='vmail'
 MAILDIR_GROUP='vmail'
+Nextcloud=true
  
 # CUSTOM - Path and file name of a file with e-mail addresses to backup, if
 #          SET. If NOT, the script will determine all mailboxes by default.
@@ -426,7 +429,7 @@ log "FILE_USERLIST_VALIDATE_EMAIL: $FILE_USERLIST_VALIDATE_EMAIL"
 log ""
  
 # Check if compress extension is allowed.
-if [[ $COMPRESSION != 'zst' && $COMPRESSION != 'gz' ]]; then
+if [[ $COMPRESSION != 'zst' && $COMPRESSION != 'gz' && $COMPRESSION != '7z' ]]; then
     logline "Check compression extension" false
     log ""
     log "ERROR: Compression extension $COMPRESSION unsupported: choose between gz and zst"
@@ -676,6 +679,8 @@ for users in "${VAR_LISTED_USER[@]}"; do
         else
             $TAR_COMMAND -cvzf "$users"-"$FILE_BACKUP" "$USERPART" --atime-preserve --preserve-permissions
         fi
+
+        7z a -sdel -p$FILE_PASSWORD $users-$FILE_BACKUP7Z $users-$FILE_BACKUP
  
         log "Delete mailbox files for user: $users ..."
         if $RM_COMMAND -rf "$DIR_TEMP/$DOMAINPART"; then
@@ -685,7 +690,7 @@ for users in "${VAR_LISTED_USER[@]}"; do
         fi
  
         log "Copying archive file for user: $users ..."
-        if $MV_COMMAND "$DIR_TEMP/$users-$FILE_BACKUP" "$DIR_BACKUP"; then
+        if $MV_COMMAND "$DIR_TEMP/$users-$FILE_BACKUP7Z" "$DIR_BACKUP"; then
             logline "Move archive file for user to: $DIR_BACKUP " true
         else
             logline "Move archive file for user to: $DIR_BACKUP " false
@@ -698,12 +703,14 @@ for users in "${VAR_LISTED_USER[@]}"; do
         else
             logline "Delete old archive files from: $DIR_BACKUP " false
         fi
+        #Upload to Nextcloud
+        bash /opt/shareLinkCreator/shareLinkCreator $DIR_BACKUP/$users-$FILE_BACKUP7Z
     fi
  
     log "Ended backup process for user: $users ..."
     log ""
 done
- 
+
 # Delete the temporary folder DIR_TEMP.
 if $RM_COMMAND -rf "$DIR_TEMP"; then
     logline "Delete temporary '$DIR_TEMP' folder " true
